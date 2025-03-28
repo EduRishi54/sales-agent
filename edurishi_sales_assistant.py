@@ -374,6 +374,21 @@ st.markdown("""
     .main-content {
         margin-top: 90px;
     }
+
+    /* Hide GitHub button and top bar */
+    .stDeployButton, header[data-testid="stHeader"] {
+        display: none !important;
+    }
+
+    /* Hide hamburger menu */
+    button[kind="header"] {
+        display: none !important;
+    }
+
+    /* Hide fullscreen button */
+    button[title="View fullscreen"] {
+        display: none !important;
+    }
 </style>
 
 <!-- Top left logo container with company name -->
@@ -1532,10 +1547,29 @@ def activate_demo_mode():
         st.markdown('<div class="error-box">Failed to activate demo mode. Please try again or configure your API key manually.</div>', unsafe_allow_html=True)
         return False
 
+# Function to hide Streamlit branding
+def hide_streamlit_style():
+    hide_st_style = """
+        <style>
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            header {visibility: hidden;}
+            .stDeployButton {display: none;}
+            [data-testid="stToolbar"] {visibility: hidden !important;}
+            [data-testid="stDecoration"] {visibility: hidden !important;}
+            [data-testid="stStatusWidget"] {visibility: hidden !important;}
+            #root > div:nth-child(1) > div > div > div > div > section > div {padding-top: 0rem;}
+        </style>
+    """
+    st.markdown(hide_st_style, unsafe_allow_html=True)
+
 # Main application
 def main():
     # Declare product_details as global at the beginning of the main function
     global product_details
+
+    # Hide Streamlit branding
+    hide_streamlit_style()
 
     # Add space for the logo
     st.markdown('<div style="margin-top: 80px;"></div>', unsafe_allow_html=True)
@@ -1759,25 +1793,61 @@ def main():
             # Ensure API key is configured for this session
             use_configured_api_key()
 
-            # Clear any pre-loaded data
-            if "data_cleared" not in st.session_state:
+            # Function to clear all CRM data
+            def clear_all_crm_data():
+                # Clear main data structures
                 st.session_state.df = None
                 st.session_state.leads = []
                 st.session_state.deals = []
                 st.session_state.tasks = []
                 st.session_state.meetings = []
                 st.session_state.activity_log = []
+                st.session_state.notifications = []
+
+                # Clear indexes and stats
+                st.session_state.leads_by_city = defaultdict(list)
+                st.session_state.leads_by_business_type = defaultdict(list)
+                st.session_state.leads_by_state = defaultdict(list)
+                st.session_state.lead_sources = defaultdict(int)
+
+                # Reset pipeline
+                st.session_state.sales_pipeline = {
+                    "stages": ["Lead Qualification", "Needs Assessment", "Proposal/Price Quote", "Negotiation/Review", "Closed Won", "Closed Lost"],
+                    "deals_by_stage": {
+                        "Lead Qualification": [],
+                        "Needs Assessment": [],
+                        "Proposal/Price Quote": [],
+                        "Negotiation/Review": [],
+                        "Closed Won": [],
+                        "Closed Lost": []
+                    }
+                }
+
+                # Reset stats
+                st.session_state.lead_generation_stats = {
+                    "total_generated": 0,
+                    "total_imported": 0,
+                    "total_manual": 0,
+                    "by_city": defaultdict(int),
+                    "by_business_type": defaultdict(int),
+                    "by_state": defaultdict(int),
+                    "by_date": defaultdict(int)
+                }
+
+                # Reset last generated leads
+                st.session_state.last_generated_leads = []
+
+                # Mark as cleared
                 st.session_state.data_cleared = True
 
+            # Clear any pre-loaded data on first run
+            if "data_cleared" not in st.session_state:
+                clear_all_crm_data()
+
             # Add a button to clear all data
-            if st.button("Clear All Data"):
-                st.session_state.df = None
-                st.session_state.leads = []
-                st.session_state.deals = []
-                st.session_state.tasks = []
-                st.session_state.meetings = []
-                st.session_state.activity_log = []
-                st.success("All data has been cleared. You can now upload a new CSV file.")
+            if st.button("Clear All CRM Data"):
+                clear_all_crm_data()
+                st.success("All CRM data has been cleared. You can now upload a new CSV file.")
                 st.rerun()
 
             # File uploader for CSV data
@@ -2294,7 +2364,7 @@ def main():
                     st.session_state.show_lead_form = True
 
             with col3:
-                if st.button("Generate Leads 🌐"):
+                if st.button("Create Lead Templates 🌐"):
                     st.session_state.show_lead_generator = True
 
             with col4:
@@ -2362,9 +2432,9 @@ def main():
 
             # Lead generator form
             if st.session_state.get("show_lead_generator", False):
-                with st.expander("Generate Leads from Internet", expanded=True):
-                    st.markdown('<div class="sub-header">Generate Leads by City & Business Type</div>', unsafe_allow_html=True)
-                    st.markdown('<div class="info-box">Generate leads from our database based on city and business type.</div>', unsafe_allow_html=True)
+                with st.expander("Create Lead Templates", expanded=True):
+                    st.markdown('<div class="sub-header">Create Lead Templates by City & Business Type</div>', unsafe_allow_html=True)
+                    st.markdown('<div class="info-box">Create lead templates that you can fill with real information later.</div>', unsafe_allow_html=True)
 
                     # Use a form for lead generation
                     with st.form("lead_generator_form"):
@@ -2394,7 +2464,7 @@ def main():
                         num_leads = st.slider("Number of Leads to Generate", min_value=1, max_value=50, value=10)
 
                         # Submit button
-                        submitted = st.form_submit_button("Generate Leads")
+                        submitted = st.form_submit_button("Generate Lead Templates")
 
                         if submitted:
                             with st.spinner("Generating leads..."):
@@ -2404,13 +2474,25 @@ def main():
                                 business_type_param = None if selected_business_type == "All Business Types" else selected_business_type
                                 subcategory_param = None if selected_subcategory == "All Subcategories" else selected_subcategory
 
-                                # Generate leads
-                                generated_leads = fetch_leads_from_external_source(
-                                    city=city_param,
-                                    state=state_param,
-                                    business_type=business_type_param,
-                                    count=num_leads
-                                )
+                                # Instead of using the external source, create empty leads that user can fill in
+                                generated_leads = []
+
+                                # Create empty lead templates based on the selected parameters
+                                for i in range(num_leads):
+                                    lead_template = {
+                                        "name": f"New Lead {i+1}",
+                                        "city": city_param if city_param else "Enter city",
+                                        "state": state_param if state_param else "Enter state",
+                                        "business_type": business_type_param if business_type_param else "Enter business type",
+                                        "contact_person": "Enter contact name",
+                                        "phone": "Enter phone",
+                                        "email": "Enter email",
+                                        "address": "Enter address",
+                                        "pincode": "Enter pincode",
+                                        "product_interested": "ELAP",
+                                        "budget": "0"
+                                    }
+                                    generated_leads.append(lead_template)
 
                                 # Add leads to the system
                                 for lead_data in generated_leads:
@@ -2421,24 +2503,25 @@ def main():
                                 # Store the generated leads for display
                                 st.session_state.last_generated_leads = generated_leads
 
-                                st.success(f"Successfully generated {len(generated_leads)} leads!")
+                                st.success(f"Successfully generated {len(generated_leads)} lead templates. Please edit them with real information.")
 
                     # Display the last generated leads
                     if st.session_state.last_generated_leads:
-                        st.markdown('<div class="sub-header">Recently Generated Leads</div>', unsafe_allow_html=True)
+                        st.markdown('<div class="sub-header">Generated Lead Templates</div>', unsafe_allow_html=True)
+                        st.markdown('<div class="warning-box">These are template leads. Please go to the Leads tab to edit them with real information.</div>', unsafe_allow_html=True)
 
                         for i, lead in enumerate(st.session_state.last_generated_leads[:5]):  # Show only the first 5
                             st.markdown(f"""
-                            <div style="padding: 15px; background-color: #F5F5F5; border-radius: 5px; margin-bottom: 10px; border-left: 4px solid #1E88E5;">
-                                <strong>{lead.get('name', 'Unknown')}</strong><br>
+                            <div style="padding: 15px; background-color: #F5F5F5; border-radius: 5px; margin-bottom: 10px; border-left: 4px solid #FFA726;">
+                                <strong>{lead.get('name', 'Unknown')} (Template)</strong><br>
                                 {lead.get('city', '')}, {lead.get('state', '')}<br>
                                 Business Type: {lead.get('business_type', 'Unknown')}<br>
-                                Contact: {lead.get('contact_person', 'Unknown')} | {lead.get('phone', 'N/A')}
+                                <span style="color: #F44336;">Please edit this lead with real information</span>
                             </div>
                             """, unsafe_allow_html=True)
 
                         if len(st.session_state.last_generated_leads) > 5:
-                            st.info(f"{len(st.session_state.last_generated_leads) - 5} more leads generated but not shown here.")
+                            st.info(f"{len(st.session_state.last_generated_leads) - 5} more lead templates generated but not shown here.")
 
                     if st.button("Close Generator"):
                         st.session_state.show_lead_generator = False
@@ -4042,8 +4125,27 @@ EDURISHI EDUVENTURES PVT LTD
                 if st.button(f"Request Bundle Quote", key=f"bundle_{bundle_name}"):
                     st.markdown("<div class='success-box'>Quote request submitted! Our team will contact you shortly.</div>", unsafe_allow_html=True)
     
-    # Footer
-    st.markdown('<div class="footer">EDURISHI EDUVENTURES PVT LTD • AI Sales Assistant & CRM • Powered by Gemini 1.5 Flash • © 2023</div>', unsafe_allow_html=True)
+    # Custom footer to replace Streamlit's footer
+    st.markdown("""
+    <style>
+    .custom-footer {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        background-color: #f8f9fa;
+        padding: 10px 20px;
+        text-align: center;
+        font-size: 0.8rem;
+        color: #6c757d;
+        border-top: 1px solid #dee2e6;
+        z-index: 999;
+    }
+    </style>
+    <div class="custom-footer">
+        EDURISHI EDUVENTURES PVT LTD • AI Sales Assistant & CRM • Powered by Gemini 1.5 Flash • © 2023-2024
+    </div>
+    """, unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
